@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Flip the Switch</title>
+<style>
+  /* Base styles carried over from the artifact host wrapper */
+  :root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  html{scroll-padding-top:env(safe-area-inset-top,0px)}
+  img{max-width:100%}
+  [hidden]:not([hidden=until-found i]){display:none!important}
+</style>
+<style>
+  /* Layout: light, switch, message, reset stacked on an empty field */
+  :root {
+    --bg: #e4e4e4;
+    --ink: #222222;
+    --muted: #6a6a6a;
+    --line: #9a9a9a;
+    --font: Arial, Helvetica, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #1d1d1d; --ink: #e8e8e8; --muted: #9a9a9a; --line: #5a5a5a; color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --bg: #1d1d1d; --ink: #e8e8e8; --muted: #9a9a9a; --line: #5a5a5a; color-scheme: dark; }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    padding-inline: 16px; padding-block: 24px;
+  }
+
+  /* Indicator light: dark lens when off, bright with glow when on */
+  .light {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: #4a4a4a; border: 4px solid #333333;
+    box-shadow: inset 0 3px 6px rgba(0,0,0,0.5);
+    transition: background 0.15s, box-shadow 0.2s;
+  }
+  .light.on {
+    background: #fafafa;
+    box-shadow: 0 0 0 4px rgba(255,255,255,0.35), 0 0 22px 6px rgba(255,255,255,0.75), inset 0 -3px 6px rgba(0,0,0,0.15);
+  }
+
+  /* The switch: the SVG itself is the control */
+  #sw {
+    background: none; border: none; padding: 0; cursor: pointer;
+    width: min(300px, 72vw);
+    -webkit-tap-highlight-color: transparent;
+  }
+  #sw svg { display: block; width: 100%; height: auto; }
+  #sw:focus-visible { outline: 3px dashed var(--ink); outline-offset: 4px; border-radius: 14px; }
+  .plate-label { font: bold 11px var(--font); fill: #222222; letter-spacing: 0.08em; }
+  .plate-label.dim { fill: #6e6e6e; font-weight: normal; }
+
+  /* Lever: rests in the lower half (OFF); moves up 34 units to ON */
+  .lever { transform: translateY(0); transition: transform 0.28s cubic-bezier(.3,1.5,.5,1); }
+  .lever rect { fill: #dddddd; transition: fill 0.12s; }
+  .grip { stroke: #888888; stroke-width: 2; stroke-linecap: round; }
+
+  /* Hover: lighter lever, nudged slightly toward ON */
+  #sw:hover:not(.on) .lever { transform: translateY(-3px); }
+  #sw:hover:not(.on) .lever rect { fill: #ececec; }
+  #sw:active:not(.on) .lever { transform: translateY(-6px); transition-duration: 0.06s; }
+
+  #sw.on { cursor: default; }
+  #sw.on .lever { transform: translateY(-34px); }
+
+  .status {
+    margin: 0; min-height: 1.4em; font-weight: bold; font-size: 1rem; letter-spacing: 0.14em;
+    color: var(--ink); text-align: center;
+  }
+
+  #reset {
+    background: transparent; color: var(--ink); border: 2px solid var(--line); border-radius: 6px;
+    font: bold 0.75rem var(--font); letter-spacing: 0.12em; padding-block: 6px; padding-inline: 12px; cursor: pointer;
+  }
+  #reset:hover:not(:disabled) { border-color: var(--ink); }
+  #reset:disabled { opacity: 0.35; cursor: not-allowed; }
+  #reset:focus-visible { outline: 3px dashed var(--ink); outline-offset: 3px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lever, .light, .lever rect { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="light" id="light" aria-hidden="true"></div>
+
+<button id="sw" role="switch" aria-checked="false" aria-label="Switch, off">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 180" aria-hidden="true">
+    <!-- plate -->
+    <rect x="55" y="15" width="90" height="150" rx="14" fill="#b0b0b0" stroke="#333333" stroke-width="4"/>
+    <circle cx="100" cy="27" r="5" fill="#555555"/>
+    <circle cx="100" cy="153" r="5" fill="#555555"/>
+    <text class="plate-label dim" id="lblOn" x="100" y="41" text-anchor="middle">ON</text>
+    <text class="plate-label" id="lblOff" x="100" y="144" text-anchor="middle">OFF</text>
+    <!-- slot -->
+    <rect x="75" y="45" width="50" height="90" rx="8" fill="#555555"/>
+    <!-- lever, starting in the OFF (lower) position -->
+    <g class="lever">
+      <rect x="82" y="87" width="36" height="40" rx="7" stroke="#222222" stroke-width="3"/>
+      <line class="grip" x1="90" y1="101" x2="110" y2="101"/>
+      <line class="grip" x1="90" y1="107" x2="110" y2="107"/>
+      <line class="grip" x1="90" y1="113" x2="110" y2="113"/>
+    </g>
+  </svg>
+</button>
+
+<p class="status" id="status" aria-live="polite">&nbsp;</p>
+<button id="reset" disabled>RESET</button>
+
+<script>
+  const sw = document.getElementById('sw');
+  const light = document.getElementById('light');
+  const status = document.getElementById('status');
+  const reset = document.getElementById('reset');
+  const lblOn = document.getElementById('lblOn');
+  const lblOff = document.getElementById('lblOff');
+  let audio;
+
+  // Short mechanical clack, synthesized (plays only after the user interacts)
+  function clack(pitch) {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      const len = 0.035, buf = audio.createBuffer(1, audio.sampleRate * len, audio.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 5);
+      const src = audio.createBufferSource(), f = audio.createBiquadFilter(), g = audio.createGain();
+      f.type = 'bandpass'; f.frequency.value = pitch; f.Q.value = 2.5; g.gain.value = 0.55;
+      src.buffer = buf; src.connect(f).connect(g).connect(audio.destination); src.start();
+    } catch (e) {}
+  }
+
+  function setOn(on) {
+    sw.classList.toggle('on', on);
+    sw.setAttribute('aria-checked', String(on));
+    sw.setAttribute('aria-label', on ? 'Switch, on' : 'Switch, off');
+    lblOn.classList.toggle('dim', !on);
+    lblOff.classList.toggle('dim', on);
+    reset.disabled = !on;
+  }
+
+  sw.addEventListener('click', () => {
+    if (sw.classList.contains('on')) return;
+    setOn(true);
+    clack(1500);
+    // Light and message follow the lever landing
+    setTimeout(() => {
+      light.classList.add('on');
+      status.textContent = 'SWITCH ACTIVATED';
+    }, 180);
+  });
+
+  reset.addEventListener('click', () => {
+    setOn(false);
+    clack(900);
+    light.classList.remove('on');
+    status.innerHTML = '&nbsp;';
+    sw.focus();
+  });
+</script>
+
+</body>
+</html>

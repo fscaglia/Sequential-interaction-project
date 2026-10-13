@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Enter the Code</title>
+<style>
+  /* Base styles carried over from the artifact host wrapper */
+  :root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  html{scroll-padding-top:env(safe-area-inset-top,0px)}
+  img{max-width:100%}
+  [hidden]:not([hidden=until-found i]){display:none!important}
+</style>
+<style>
+  /* Layout: instruction, keypad, message, reset stacked on an empty field */
+  :root {
+    --bg: #e4e4e4;
+    --ink: #222222;
+    --muted: #6a6a6a;
+    --line: #9a9a9a;
+    --font: Arial, Helvetica, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #1d1d1d; --ink: #e8e8e8; --muted: #9a9a9a; --line: #5a5a5a; color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --bg: #1d1d1d; --ink: #e8e8e8; --muted: #9a9a9a; --line: #5a5a5a; color-scheme: dark; }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    padding-inline: 16px; padding-block: 24px;
+  }
+  .instruction { margin: 0; font-weight: bold; font-size: 1.05rem; letter-spacing: 0.14em; }
+
+  svg.pad { display: block; width: min(320px, 82vw); height: auto; user-select: none; -webkit-user-select: none; }
+  svg.pad text { font-family: var(--font); }
+
+  /* Keys: raised cap over a dark base edge */
+  .key { cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
+  .key .base { fill: #555555; }
+  .key .cap { fill: #dddddd; stroke: #555555; stroke-width: 1.5; transition: fill 0.1s; }
+  .key .face { transform: translateY(0); transition: transform 0.07s ease-out; }
+  .key .lbl { font-size: 17px; fill: #222222; text-anchor: middle; pointer-events: none; }
+  .key .lbl.small { font-size: 12px; font-weight: bold; letter-spacing: 0.06em; }
+  .key:hover .cap { fill: #ececec; }
+  .key.down .face { transform: translateY(3px); }
+  .key.down .cap { fill: #b4b4b4; }
+  .key:focus-visible .cap { stroke: #111111; stroke-width: 3; stroke-dasharray: 4 3; }
+  .key.off { cursor: default; }
+  .key.off .cap { fill: #c2c2c2; }
+  .key.off .lbl { fill: #8a8a8a; }
+  .key.off:hover .cap { fill: #c2c2c2; }
+
+  /* Status lamp in the ✓ position: recessed, not a key */
+  .lamp rect { fill: #8f8f8f; stroke: #555555; stroke-width: 1.5; transition: fill 0.2s; }
+  .lamp path { fill: none; stroke: #b0b0b0; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; transition: stroke 0.2s; }
+  .lamp.lit rect { fill: #fafafa; }
+  .lamp.lit path { stroke: #111111; }
+
+  /* Display slots */
+  .slot { fill: #333333; stroke: #777777; stroke-width: 1.5; transition: fill 0.1s; }
+  .slot.next { stroke: #dddddd; }
+  .digit { font-size: 26px; font-weight: bold; fill: #ffffff; text-anchor: middle; }
+  .digit.pop { animation: pop 0.15s ease-out; }
+  @keyframes pop { from { transform: translateY(-4px); opacity: 0.3; } }
+  .display.wrong .slot { fill: #ffffff; }
+  .display.wrong .digit { fill: #111111; }
+  .display.right .slot { fill: #d8d8d8; }
+  .display.right .digit { fill: #111111; }
+  .display.shake { animation: shake 0.3s; }
+  @keyframes shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+  .message { margin: 0; min-height: 1.4em; font-weight: bold; letter-spacing: 0.14em; text-align: center; }
+
+  #reset {
+    background: transparent; color: var(--ink); border: 2px solid var(--line); border-radius: 6px;
+    font: bold 0.75rem var(--font); letter-spacing: 0.12em; padding-block: 6px; padding-inline: 12px; cursor: pointer;
+  }
+  #reset:hover { border-color: var(--ink); }
+  #reset:focus-visible { outline: 3px dashed var(--ink); outline-offset: 3px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .key .face, .key .cap, .lamp rect, .lamp path, .slot { transition: none; }
+    .digit.pop, .display.shake { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<p class="instruction">ENTER CODE: 1234</p>
+
+<svg class="pad" id="pad" viewBox="0 0 240 310" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Keypad">
+  <rect x="30" y="10" width="180" height="290" rx="12" fill="#aaaaaa" stroke="#333333" stroke-width="3"/>
+  <g class="display" id="display">
+    <rect x="48" y="28" width="144" height="48" rx="5" fill="#444444"/>
+  </g>
+  <g id="keys"></g>
+</svg>
+
+<p class="message" id="message" aria-live="assertive">&nbsp;</p>
+<button id="reset">RESET</button>
+
+<script>
+  const NS = 'http://www.w3.org/2000/svg';
+  const CODE = '1234';
+  const display = document.getElementById('display');
+  const keysG = document.getElementById('keys');
+  const message = document.getElementById('message');
+  let entered = '', locked = false, accepted = false;
+
+  const el = (tag, attrs, parent) => {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  };
+
+  // Four slots inside the display
+  const slots = [], digits = [];
+  for (let i = 0; i < 4; i++) {
+    const x = 58 + i * 32;
+    slots.push(el('rect', { class: 'slot', x, y: 36, width: 28, height: 32, rx: 3 }, display));
+    digits.push(el('text', { class: 'digit', x: x + 14, y: 61 }, display));
+  }
+
+  // Keys follow the supplied layout: 3 columns x 4 rows
+  const LAYOUT = ['1','2','3','4','5','6','7','8','9','CLEAR','0','LAMP'];
+  const keyEls = {};
+  LAYOUT.forEach((v, i) => {
+    const x = [49, 98, 147][i % 3], y = [94, 141, 188, 235][Math.floor(i / 3)];
+    if (v === 'LAMP') {
+      const g = el('g', { class: 'lamp', id: 'lamp', 'aria-hidden': 'true' }, keysG);
+      el('rect', { x, y: y + 3, width: 43, height: 40, rx: 5 }, g);
+      el('path', { d: `M${x+12} ${y+24} L${x+19} ${y+31} L${x+32} ${y+15}` }, g);
+      return;
+    }
+    const g = el('g', { class: 'key', tabindex: 0, role: 'button', 'aria-label': v === 'CLEAR' ? 'Clear' : v }, keysG);
+    el('rect', { class: 'base', x, y: y + 3, width: 43, height: 40, rx: 5 }, g);
+    const face = el('g', { class: 'face' }, g);
+    el('rect', { class: 'cap', x, y, width: 43, height: 40, rx: 5 }, face);
+    const t = el('text', { class: 'lbl' + (v === 'CLEAR' ? ' small' : ''), x: x + 21.5, y: v === 'CLEAR' ? y + 24 : y + 26 }, face);
+    t.textContent = v;
+    g.dataset.v = v;
+    keyEls[v] = g;
+
+    const press = () => { if (!g.classList.contains('off')) g.classList.add('down'); };
+    const release = () => g.classList.remove('down');
+    g.addEventListener('pointerdown', press);
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(e => g.addEventListener(e, release));
+    g.addEventListener('click', () => activate(v));
+    g.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tap(v); }
+    });
+  });
+
+  // Animate a press for keyboard input, then act
+  function tap(v) {
+    const g = keyEls[v];
+    if (!g || g.classList.contains('off')) return;
+    g.classList.add('down');
+    setTimeout(() => g.classList.remove('down'), 110);
+    activate(v);
+  }
+
+  function render(popIndex) {
+    for (let i = 0; i < 4; i++) {
+      digits[i].textContent = entered[i] || '';
+      slots[i].classList.toggle('next', !locked && i === entered.length);
+    }
+    if (popIndex != null) {
+      const d = digits[popIndex];
+      d.classList.remove('pop'); void d.getBBox(); d.classList.add('pop');
+    }
+  }
+
+  function setKeys(enabled) {
+    Object.values(keyEls).forEach(g => {
+      g.classList.toggle('off', !enabled);
+      g.setAttribute('aria-disabled', String(!enabled));
+    });
+  }
+
+  function activate(v) {
+    if (locked) return;
+    if (v === 'CLEAR') { entered = ''; message.innerHTML = '&nbsp;'; render(); return; }
+    if (entered.length >= 4) return;
+    entered += v;
+    message.innerHTML = '&nbsp;';
+    render(entered.length - 1);
+    if (entered.length === 4) setTimeout(check, 200);
+  }
+
+  function check() {
+    if (entered === CODE) {
+      accepted = locked = true;
+      display.classList.add('right');
+      document.getElementById('lamp').classList.add('lit');
+      message.textContent = '✓ CODE ACCEPTED';
+      setKeys(false);
+      render();
+    } else {
+      locked = true;
+      setKeys(false);
+      display.classList.add('wrong', 'shake');
+      message.textContent = 'INCORRECT CODE';
+      render();
+      setTimeout(() => {
+        display.classList.remove('wrong', 'shake');
+        entered = ''; locked = false;
+        setKeys(true);
+        message.innerHTML = '&nbsp;';
+        render();
+      }, 1100);
+    }
+  }
+
+  function reset() {
+    entered = ''; locked = accepted = false;
+    display.classList.remove('wrong', 'right', 'shake');
+    document.getElementById('lamp').classList.remove('lit');
+    message.innerHTML = '&nbsp;';
+    setKeys(true);
+    render();
+  }
+
+  document.getElementById('reset').addEventListener('click', reset);
+
+  // Typing on a physical keyboard presses the matching key
+  document.addEventListener('keydown', (e) => {
+    if (e.target.closest && e.target.closest('.key, button')) return;
+    if (/^[0-9]$/.test(e.key)) tap(e.key);
+    else if (e.key === 'Backspace' || e.key === 'Escape') tap('CLEAR');
+  });
+
+  render();
+</script>
+
+</body>
+</html>
