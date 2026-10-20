@@ -1,0 +1,336 @@
+// Defuse the Bomb: one linear sequence built from the three studies.
+//   Step 1  Switch  (studies/flip-the-switch)  -> opens the panel, reveals the code
+//   Step 2  Keypad  (studies/enter-the-code)   -> enter the revealed code
+//   Step 3  Button  (studies/press-me-button)  -> press DEFUSE
+// Each step unlocks only after the previous one succeeds. A 60s countdown runs
+// from page load; reaching zero detonates. RESTART appears at either ending.
+(function () {
+  const DURATION = 60000;      // countdown length, ms
+  const URGENT_AT = 10;        // seconds left when ticking speeds up in pitch
+  const NS = 'http://www.w3.org/2000/svg';
+
+  const $ = (id) => document.getElementById(id);
+  const device = $('device');
+  const timerEl = $('timer');
+  const armedLight = $('armedLight');
+  const armedLabel = $('armedLabel');
+  const statusEl = $('status');
+  const restartBtn = $('restart');
+  const flash = $('flash');
+  const modules = [$('modSwitch'), $('modKeypad'), $('modButton')];
+
+  // ---------- Sequence state ----------
+
+  let phase = 'armed';         // 'armed' | 'defused' | 'exploded'
+  let step = 1;                // the one step currently available
+  let code = '';               // random 4-digit disarm code for this round
+  let deadline = 0;
+  let lastSecond = null;
+
+  // Every delayed action goes through later() so restart/detonation can cancel it
+  const pending = new Set();
+  function later(fn, ms) {
+    const id = setTimeout(() => { pending.delete(id); fn(); }, ms);
+    pending.add(id);
+  }
+  function cancelPending() { pending.forEach(clearTimeout); pending.clear(); }
+
+  const INSTRUCTIONS = {
+    1: 'FLIP THE SWITCH TO OPEN THE ACCESS PANEL',
+    2: 'ENTER THE DISARM CODE',
+    3: 'PRESS DEFUSE',
+  };
+
+  // Lock every module except the current step; earlier steps stay in their finished state
+  function setStep(n) {
+    step = n;
+    modules.forEach((m, i) => {
+      const s = i + 1;
+      m.classList.toggle('locked', s > n);
+      m.classList.toggle('active', s === n);
+      m.classList.toggle('done', s < n);
+      m.inert = s !== n;
+    });
+    statusEl.textContent = INSTRUCTIONS[n];
+  }
+
+  function focusStep(n) {
+    const target = n === 1 ? sw : n === 2 ? keyEls['1'] : defuseBtn;
+    target.focus({ preventScroll: true });
+    const r = modules[n - 1].getBoundingClientRect();
+    if (r.top < 0 || r.bottom > window.innerHeight) {
+      modules[n - 1].scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+    }
+  }
+
+  // ---------- Countdown ----------
+
+  const fmt = (sec) => '00:' + String(sec).padStart(2, '0');
+  const fmtFull = (sec) => String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
+
+  function updateTimer() {
+    if (phase !== 'armed') return;
+    const left = deadline - performance.now();
+    if (left <= 0) { detonate(); return; }
+    const sec = Math.min(DURATION / 1000, Math.ceil(left / 1000));
+    if (sec !== lastSecond) {
+      if (lastSecond !== null) {
+        Sfx.tick(sec <= URGENT_AT);
+        armedLight.classList.add('blink');
+        setTimeout(() => armedLight.classList.remove('blink'), 180);
+      }
+      lastSecond = sec;
+      timerEl.textContent = sec >= 60 ? fmtFull(sec) : fmt(sec);
+      timerEl.classList.toggle('urgent', sec <= URGENT_AT);
+    }
+  }
+  setInterval(updateTimer, 50);
+
+  // ---------- Step 1: switch ----------
+
+  const sw = $('sw');
+  const swLight = $('swLight');
+  const lblOn = $('lblOn');
+  const lblOff = $('lblOff');
+  const codeReadout = $('codeReadout');
+  const codeValue = $('codeValue');
+
+  function setSwitch(on) {
+    sw.classList.toggle('on', on);
+    sw.setAttribute('aria-checked', String(on));
+    sw.setAttribute('aria-label', on ? 'Access panel switch, on' : 'Access panel switch, off');
+    lblOn.classList.toggle('dim', !on);
+    lblOff.classList.toggle('dim', on);
+  }
+
+  sw.addEventListener('click', () => {
+    if (phase !== 'armed' || step !== 1 || sw.classList.contains('on')) return;
+    setSwitch(true);
+    Sfx.clack(1500);
+    // Light and code follow the lever landing (study timing: 180ms)
+    later(() => {
+      swLight.classList.add('on');
+      codeValue.textContent = code;
+      codeReadout.classList.add('revealed');
+      setStep(2);
+      focusStep(2);
+    }, 180);
+  });
+
+  // ---------- Step 2: keypad ----------
+
+  const kpDisplay = $('kpDisplay');
+  const kpKeys = $('kpKeys');
+  const kpMessage = $('kpMessage');
+  let entered = '', kpLocked = false;
+
+  const el = (tag, attrs, parent) => {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  };
+
+  const slots = [], digits = [];
+  for (let i = 0; i < 4; i++) {
+    const x = 58 + i * 32;
+    slots.push(el('rect', { class: 'slot', x, y: 36, width: 28, height: 32, rx: 3 }, kpDisplay));
+    digits.push(el('text', { class: 'digit', x: x + 14, y: 61 }, kpDisplay));
+  }
+
+  const LAYOUT = ['1','2','3','4','5','6','7','8','9','CLEAR','0','LAMP'];
+  const keyEls = {};
+  let lamp;
+  LAYOUT.forEach((v, i) => {
+    const x = [49, 98, 147][i % 3], y = [94, 141, 188, 235][Math.floor(i / 3)];
+    if (v === 'LAMP') {
+      lamp = el('g', { class: 'lamp', 'aria-hidden': 'true' }, kpKeys);
+      el('rect', { x, y: y + 3, width: 43, height: 40, rx: 5 }, lamp);
+      el('path', { d: `M${x+12} ${y+24} L${x+19} ${y+31} L${x+32} ${y+15}` }, lamp);
+      return;
+    }
+    const g = el('g', { class: 'key', tabindex: 0, role: 'button', 'aria-label': v === 'CLEAR' ? 'Clear' : v }, kpKeys);
+    el('rect', { class: 'base', x, y: y + 3, width: 43, height: 40, rx: 5 }, g);
+    const face = el('g', { class: 'face' }, g);
+    el('rect', { class: 'cap', x, y, width: 43, height: 40, rx: 5 }, face);
+    const t = el('text', { class: 'lbl' + (v === 'CLEAR' ? ' small' : ''), x: x + 21.5, y: v === 'CLEAR' ? y + 24 : y + 26 }, face);
+    t.textContent = v;
+    keyEls[v] = g;
+
+    const press = () => { if (!g.classList.contains('off')) g.classList.add('down'); };
+    const release = () => g.classList.remove('down');
+    g.addEventListener('pointerdown', press);
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(e => g.addEventListener(e, release));
+    g.addEventListener('click', () => activate(v));
+    g.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tap(v); }
+    });
+  });
+
+  // Animated press for keyboard input, then act
+  function tap(v) {
+    const g = keyEls[v];
+    if (!g || g.classList.contains('off')) return;
+    g.classList.add('down');
+    setTimeout(() => g.classList.remove('down'), 110);
+    activate(v);
+  }
+
+  function render(popIndex) {
+    for (let i = 0; i < 4; i++) {
+      digits[i].textContent = entered[i] || '';
+      slots[i].classList.toggle('next', !kpLocked && i === entered.length);
+    }
+    if (popIndex != null) {
+      const d = digits[popIndex];
+      d.classList.remove('pop'); void d.getBBox(); d.classList.add('pop');
+    }
+  }
+
+  function setKeys(enabled) {
+    Object.values(keyEls).forEach(g => {
+      g.classList.toggle('off', !enabled);
+      g.setAttribute('aria-disabled', String(!enabled));
+    });
+  }
+
+  function activate(v) {
+    if (phase !== 'armed' || step !== 2 || kpLocked) return;
+    Sfx.key();
+    if (v === 'CLEAR') { entered = ''; kpMessage.innerHTML = '&nbsp;'; render(); return; }
+    if (entered.length >= 4) return;
+    entered += v;
+    kpMessage.innerHTML = '&nbsp;';
+    render(entered.length - 1);
+    // Lock input while checking so CLEAR can't empty the entry mid-check
+    if (entered.length === 4) { kpLocked = true; later(check, 200); }
+  }
+
+  function check() {
+    kpLocked = true;
+    setKeys(false);
+    if (entered === code) {
+      kpDisplay.classList.add('right');
+      lamp.classList.add('lit');
+      kpMessage.textContent = '✓ CODE ACCEPTED';
+      Sfx.accept();
+      render();
+      later(() => { setStep(3); focusStep(3); }, 250);
+    } else {
+      kpDisplay.classList.add('wrong', 'shake');
+      kpMessage.textContent = 'INCORRECT CODE';
+      Sfx.buzz();
+      render();
+      later(() => {
+        kpDisplay.classList.remove('wrong', 'shake');
+        entered = ''; kpLocked = false;
+        setKeys(true);
+        kpMessage.innerHTML = '&nbsp;';
+        render();
+        if (step === 2) keyEls['1'].focus({ preventScroll: true });
+      }, 1100);
+    }
+  }
+
+  // Typing digits anywhere presses the matching key, but only during step 2
+  document.addEventListener('keydown', (e) => {
+    if (phase !== 'armed' || step !== 2) return;
+    if (e.target.closest && e.target.closest('button')) return;   // keys handle Enter/Space themselves
+    if (/^[0-9]$/.test(e.key)) tap(e.key);
+    else if (e.key === 'Backspace' || e.key === 'Escape') tap('CLEAR');
+  });
+
+  function resetKeypad() {
+    entered = ''; kpLocked = false;
+    kpDisplay.classList.remove('wrong', 'right', 'shake');
+    lamp.classList.remove('lit');
+    kpMessage.innerHTML = '&nbsp;';
+    setKeys(true);
+    render();
+  }
+
+  // ---------- Step 3: DEFUSE button ----------
+
+  const defuseBtn = $('defuse');
+
+  defuseBtn.addEventListener('click', () => {
+    if (phase !== 'armed' || step !== 3 || defuseBtn.classList.contains('on')) return;
+    const left = Math.max(0, deadline - performance.now());
+    phase = 'defused';                       // timer freezes on the press
+    defuseBtn.classList.add('on');
+    defuseBtn.setAttribute('aria-pressed', 'true');
+    defuseBtn.setAttribute('aria-label', 'Defused');
+    Sfx.thunk();
+    later(() => {
+      modules[2].classList.add('done');
+      modules[2].classList.remove('active');
+      device.classList.add('defused');
+      armedLabel.textContent = 'SAFE';
+      const secs = Math.ceil(left / 1000);    // matches the frozen timer
+      statusEl.textContent = `BOMB DEFUSED · ${secs} SECOND${secs === 1 ? "" : "S"} LEFT`;
+      Sfx.chime();
+      showRestart();
+    }, 350);
+  });
+
+  // ---------- Endings ----------
+
+  function detonate() {
+    phase = 'exploded';
+    cancelPending();
+    modules.forEach(m => { m.inert = true; });
+    timerEl.textContent = '00:00';
+    timerEl.classList.remove('urgent');
+    armedLabel.textContent = 'BOOM';
+    statusEl.textContent = 'DETONATED';
+    device.classList.add('exploded');
+    flash.classList.remove('boom'); void flash.offsetWidth; flash.classList.add('boom');
+    Sfx.explosion();
+    later(showRestart, 900);
+  }
+
+  function showRestart() {
+    restartBtn.hidden = false;
+    restartBtn.focus({ preventScroll: true });
+  }
+
+  // ---------- Round setup ----------
+
+  function newRound() {
+    cancelPending();
+    phase = 'armed';
+    code = Array.from({ length: 4 }, () => Math.floor(Math.random() * 10)).join('');
+
+    device.classList.remove('defused', 'exploded');
+    flash.classList.remove('boom');
+    armedLabel.textContent = 'ARMED';
+    restartBtn.hidden = true;
+
+    setSwitch(false);
+    swLight.classList.remove('on');
+    codeReadout.classList.remove('revealed');
+    codeValue.textContent = '- - - -';
+
+    resetKeypad();
+
+    defuseBtn.classList.remove('on');
+    defuseBtn.setAttribute('aria-pressed', 'false');
+    defuseBtn.removeAttribute('aria-label');
+
+    setStep(1);
+    deadline = performance.now() + DURATION;
+    lastSecond = null;
+    updateTimer();
+  }
+
+  restartBtn.addEventListener('click', () => {
+    Sfx.clack(900);                          // the switch study's reset clack
+    newRound();
+    focusStep(1);
+  });
+
+  // Sound can only start after the first user gesture
+  ['pointerdown', 'keydown'].forEach(e => document.addEventListener(e, Sfx.unlock, { capture: true }));
+
+  newRound();
+})();

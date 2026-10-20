@@ -1,28 +1,85 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Hello</title>
-  <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 24px;
-      font-family: system-ui, sans-serif;
-      background: #f4f4f4;
-      color: #222;
-    }
-    h1 { font-size: 3rem; margin: 0; }
-    img { width: 400px; max-width: 90vw; height: auto; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Defuse the Bomb</title>
+<meta name="description" content="A sequential interaction prototype: flip the switch, enter the code, press DEFUSE before the timer runs out.">
+<link rel="stylesheet" href="css/style.css">
+<script src="js/audio.js" defer></script>
+<script src="js/main.js" defer></script>
 </head>
 <body>
-  <h1>Hello</h1>
-  <img src="assets/Test%20Image.jpeg" alt="Test image">
+
+<main class="device" id="device">
+
+  <!-- Countdown header: armed light + timer -->
+  <header class="device-head">
+    <span class="armed-light" id="armedLight" aria-hidden="true"></span>
+    <div class="timer" id="timer" role="timer" aria-label="Time remaining">01:00</div>
+    <span class="armed-label" id="armedLabel">ARMED</span>
+  </header>
+
+  <p class="status" id="status" aria-live="polite">FLIP THE SWITCH TO OPEN THE ACCESS PANEL</p>
+  <button class="restart" id="restart" hidden>RESTART</button>
+
+  <div class="modules">
+
+    <!-- Step 1: switch (from studies/flip-the-switch) -->
+    <section class="module" id="modSwitch" data-step="1" aria-labelledby="titleSwitch">
+      <h2 class="module-title" id="titleSwitch"><span class="step-num">1</span>ACCESS PANEL</h2>
+      <div class="sw-light" id="swLight" aria-hidden="true"></div>
+      <button id="sw" role="switch" aria-checked="false" aria-label="Access panel switch, off">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 180" aria-hidden="true">
+          <rect x="55" y="15" width="90" height="150" rx="14" fill="#b0b0b0" stroke="#333333" stroke-width="4"/>
+          <circle cx="100" cy="27" r="5" fill="#555555"/>
+          <circle cx="100" cy="153" r="5" fill="#555555"/>
+          <text class="plate-label dim" id="lblOn" x="100" y="41" text-anchor="middle">ON</text>
+          <text class="plate-label" id="lblOff" x="100" y="144" text-anchor="middle">OFF</text>
+          <rect x="75" y="45" width="50" height="90" rx="8" fill="#555555"/>
+          <g class="lever">
+            <rect x="82" y="87" width="36" height="40" rx="7" stroke="#222222" stroke-width="3"/>
+            <line class="grip" x1="90" y1="101" x2="110" y2="101"/>
+            <line class="grip" x1="90" y1="107" x2="110" y2="107"/>
+            <line class="grip" x1="90" y1="113" x2="110" y2="113"/>
+          </g>
+        </svg>
+      </button>
+      <div class="code-readout" id="codeReadout">
+        <span class="code-label">DISARM CODE</span>
+        <span class="code-value" id="codeValue" aria-live="polite">- - - -</span>
+      </div>
+    </section>
+
+    <!-- Step 2: keypad (from studies/enter-the-code); keys are built in js/main.js -->
+    <section class="module" id="modKeypad" data-step="2" aria-labelledby="titleKeypad">
+      <h2 class="module-title" id="titleKeypad"><span class="step-num">2</span>ENTER CODE</h2>
+      <svg class="pad" id="pad" viewBox="0 0 240 310" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Keypad">
+        <rect x="30" y="10" width="180" height="290" rx="12" fill="#aaaaaa" stroke="#333333" stroke-width="3"/>
+        <g class="display" id="kpDisplay">
+          <rect x="48" y="28" width="144" height="48" rx="5" fill="#444444"/>
+        </g>
+        <g id="kpKeys"></g>
+      </svg>
+      <p class="kp-message" id="kpMessage" aria-live="assertive">&nbsp;</p>
+    </section>
+
+    <!-- Step 3: press button (from studies/press-me-button) -->
+    <section class="module" id="modButton" data-step="3" aria-labelledby="titleButton">
+      <h2 class="module-title" id="titleButton"><span class="step-num">3</span>DEFUSE</h2>
+      <span class="btn-light" id="btnLight" aria-hidden="true"></span>
+      <div class="housing">
+        <button id="defuse" aria-pressed="false">
+          <span class="label">DEFUSE</span>
+          <svg class="check" viewBox="0 0 64 64" aria-hidden="true"><path d="M14 34 L27 47 L51 19"/></svg>
+        </button>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<div class="flash" id="flash" aria-hidden="true"></div>
+
 </body>
 </html>
