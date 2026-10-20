@@ -7,9 +7,35 @@
 <meta name="description" content="A sequential interaction prototype: flip the switch, enter the code, press DEFUSE before the timer runs out.">
 <link rel="stylesheet" href="css/style.css">
 <script src="js/audio.js" defer></script>
+<script src="js/controls.js" defer></script>
 <script src="js/main.js" defer></script>
 </head>
 <body>
+
+<!-- Floating control panel; built by js/controls.js -->
+<aside class="anim-panel" id="animPanel" aria-label="Prototype controls"></aside>
+
+<!-- Shared SVG texture patterns (Appearance > Texture) -->
+<svg class="defs" width="0" height="0" aria-hidden="true" focusable="false">
+  <defs>
+    <pattern id="tex-brushed" width="6" height="3" patternUnits="userSpaceOnUse">
+      <rect width="6" height="1" fill="rgba(255,255,255,0.22)"/><rect y="1" width="6" height="1" fill="rgba(0,0,0,0.09)"/>
+    </pattern>
+    <pattern id="tex-stripes" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="8" height="16" fill="rgba(0,0,0,0.3)"/>
+    </pattern>
+    <pattern id="tex-dots" width="7" height="7" patternUnits="userSpaceOnUse">
+      <circle cx="3.5" cy="3.5" r="1.4" fill="rgba(0,0,0,0.25)"/>
+    </pattern>
+    <filter id="grain-filter" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" result="n"/>
+      <feColorMatrix in="n" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.45 0"/>
+    </filter>
+    <pattern id="tex-grain" width="120" height="120" patternUnits="userSpaceOnUse">
+      <rect width="120" height="120" fill="#000" filter="url(#grain-filter)"/>
+    </pattern>
+  </defs>
+</svg>
 
 <main class="device" id="device">
 
@@ -31,7 +57,8 @@
       <div class="sw-light" id="swLight" aria-hidden="true"></div>
       <button id="sw" role="switch" aria-checked="false" aria-label="Access panel switch, off">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 180" aria-hidden="true">
-          <rect x="55" y="15" width="90" height="150" rx="14" fill="#b0b0b0" stroke="#333333" stroke-width="4"/>
+          <rect id="swPlate" x="55" y="15" width="90" height="150" rx="14" fill="#b0b0b0" stroke="#333333" stroke-width="4"/>
+          <rect id="swTexture" class="tex" x="55" y="15" width="90" height="150" rx="14" fill="none"/>
           <circle cx="100" cy="27" r="5" fill="#555555"/>
           <circle cx="100" cy="153" r="5" fill="#555555"/>
           <text class="plate-label dim" id="lblOn" x="100" y="41" text-anchor="middle">ON</text>
@@ -39,10 +66,9 @@
           <rect x="75" y="45" width="50" height="90" rx="8" fill="#555555"/>
           <g class="lever">
             <rect x="82" y="87" width="36" height="40" rx="7" stroke="#222222" stroke-width="3"/>
-            <line class="grip" x1="90" y1="101" x2="110" y2="101"/>
-            <line class="grip" x1="90" y1="107" x2="110" y2="107"/>
-            <line class="grip" x1="90" y1="113" x2="110" y2="113"/>
+            <g id="swGrip"></g>
           </g>
+          <image class="asset-img" href="assets/switch.svg" x="0" y="0" width="200" height="180"/>
         </svg>
       </button>
       <div class="code-readout" id="codeReadout">
@@ -55,7 +81,9 @@
     <section class="module" id="modKeypad" data-step="2" aria-labelledby="titleKeypad">
       <h2 class="module-title" id="titleKeypad"><span class="step-num">2</span>ENTER CODE</h2>
       <svg class="pad" id="pad" viewBox="0 0 240 310" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Keypad">
-        <rect x="30" y="10" width="180" height="290" rx="12" fill="#aaaaaa" stroke="#333333" stroke-width="3"/>
+        <image class="asset-img" href="assets/keypad.svg" x="0" y="0" width="240" height="310"/>
+        <rect class="pad-body" x="30" y="10" width="180" height="290" rx="12" fill="#aaaaaa" stroke="#333333" stroke-width="3"/>
+        <rect id="kpTexture" class="tex" x="30" y="10" width="180" height="290" rx="12" fill="none"/>
         <g class="display" id="kpDisplay">
           <rect x="48" y="28" width="144" height="48" rx="5" fill="#444444"/>
         </g>
@@ -69,6 +97,7 @@
       <h2 class="module-title" id="titleButton"><span class="step-num">3</span>DEFUSE</h2>
       <span class="btn-light" id="btnLight" aria-hidden="true"></span>
       <div class="housing">
+        <svg class="hold-ring" id="holdRing" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="47" pathLength="100"/></svg>
         <button id="defuse" aria-pressed="false">
           <span class="label">DEFUSE</span>
           <svg class="check" viewBox="0 0 64 64" aria-hidden="true"><path d="M14 34 L27 47 L51 19"/></svg>

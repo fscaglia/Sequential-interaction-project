@@ -4,6 +4,7 @@
 //   Step 3  Button  (studies/press-me-button)  -> press DEFUSE
 // Each step unlocks only after the previous one succeeds. A 60s countdown runs
 // from page load; reaching zero detonates. RESTART appears at either ending.
+// Timing, travel, hold and drag settings come from the control panel (js/controls.js, window.Anim).
 (function () {
   const DURATION = 60000;      // countdown length, ms
   const URGENT_AT = 10;        // seconds left when ticking speeds up in pitch
@@ -103,19 +104,70 @@
     lblOff.classList.toggle('dim', on);
   }
 
-  sw.addEventListener('click', () => {
+  function flipOn() {
     if (phase !== 'armed' || step !== 1 || sw.classList.contains('on')) return;
     setSwitch(true);
     Sfx.clack(1500);
-    // Light and code follow the lever landing (study timing: 180ms)
+    // Light and code follow the lever landing (panel: Switch > Delay, study 180ms)
     later(() => {
       swLight.classList.add('on');
       codeValue.textContent = code;
       codeReadout.classList.add('revealed');
       setStep(2);
       focusStep(2);
-    }, 180);
+    }, Anim.delay('switch'));
+  }
+
+  // Clicking flips the switch; dragging the lever up also works
+  // (panel: Switch > Drag sensitivity, Snap distance, Trigger threshold)
+  const lever = sw.querySelector('.lever');
+  let drag = null, suppressClick = false;
+
+  function endDrag() {
+    lever.style.transition = '';
+    lever.style.transform = '';
+    drag = null;
+  }
+  function suppressNextClick() { suppressClick = true; setTimeout(() => { suppressClick = false; }, 0); }
+
+  sw.addEventListener('click', () => { if (!suppressClick) flipOn(); });
+
+  sw.addEventListener('pointerdown', (e) => {
+    if (phase !== 'armed' || step !== 1 || sw.classList.contains('on') || e.button !== 0) return;
+    drag = { x: e.clientX, y: e.clientY, off: 0, moved: false };
+    sw.setPointerCapture(e.pointerId);
   });
+
+  sw.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+    drag.moved = true;
+    // Distance moved along the lever's "up" direction, allowing for panel rotation
+    const a = Anim.get('switch', 'rotation') * Math.PI / 180;
+    const up = dx * Math.sin(a) - dy * Math.cos(a);
+    const travel = Anim.get('switch', 'travel');
+    const units = up * (200 / sw.offsetWidth) * Anim.get('switch', 'sensitivity');
+    drag.off = Math.min(Math.max(units, 0), travel);
+    lever.style.transition = 'none';
+    lever.style.transform = `translateY(${-drag.off}px)`;
+    if (travel - drag.off <= Anim.get('switch', 'snap')) {
+      endDrag(); suppressNextClick(); flipOn();
+    }
+  });
+
+  function releaseDrag(cancelled) {
+    if (!drag) return;
+    const { moved, off } = drag;
+    endDrag();
+    if (!moved) return;                       // a plain click; the click handler flips it
+    suppressNextClick();
+    const travel = Anim.get('switch', 'travel');
+    if (!cancelled && off >= travel * Anim.get('switch', 'threshold') / 100) flipOn();
+    // otherwise the lever springs back to OFF through its normal transition
+  }
+  sw.addEventListener('pointerup', () => releaseDrag(false));
+  sw.addEventListener('pointercancel', () => releaseDrag(true));
 
   // ---------- Step 2: keypad ----------
 
@@ -131,11 +183,20 @@
     return n;
   };
 
-  const slots = [], digits = [];
-  for (let i = 0; i < 4; i++) {
-    const x = 58 + i * 32;
-    slots.push(el('rect', { class: 'slot', x, y: 36, width: 28, height: 32, rx: 3 }, kpDisplay));
-    digits.push(el('text', { class: 'digit', x: x + 14, y: 61 }, kpDisplay));
+  // Display slots, one per code digit (panel: Keypad > Code length; study: 4)
+  let codeLength = 4;
+  let slots = [], digits = [];
+  function buildSlots(n) {
+    codeLength = n;
+    slots.concat(digits).forEach(e => e.remove());
+    slots = []; digits = [];
+    const gap = 4, w = Math.min(28, (128 - gap * (n - 1)) / n);
+    const start = 120 - (n * w + (n - 1) * gap) / 2;
+    for (let i = 0; i < n; i++) {
+      const x = start + i * (w + gap);
+      slots.push(el('rect', { class: 'slot', x, y: 36, width: w, height: 32, rx: 3 }, kpDisplay));
+      digits.push(el('text', { class: 'digit', x: x + w / 2, y: 61, style: `font-size:${Math.min(26, w)}px` }, kpDisplay));
+    }
   }
 
   const LAYOUT = ['1','2','3','4','5','6','7','8','9','CLEAR','0','LAMP'];
@@ -157,11 +218,25 @@
     t.textContent = v;
     keyEls[v] = g;
 
-    const press = () => { if (!g.classList.contains('off')) g.classList.add('down'); };
-    const release = () => g.classList.remove('down');
+    // With a hold duration set (panel: Keypad > Hold duration), a key registers
+    // only after being held that long; otherwise it fires on click as in the study
+    let holdTimer = null;
+    const press = () => {
+      if (g.classList.contains('off')) return;
+      g.classList.add('down');
+      const hold = Anim.get('keypad', 'hold');
+      if (hold > 0) {
+        g.classList.add('holding');
+        holdTimer = setTimeout(() => { holdTimer = null; g.classList.remove('holding'); activate(v); }, hold);
+      }
+    };
+    const release = () => {
+      g.classList.remove('down', 'holding');
+      if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+    };
     g.addEventListener('pointerdown', press);
     ['pointerup', 'pointerleave', 'pointercancel'].forEach(e => g.addEventListener(e, release));
-    g.addEventListener('click', () => activate(v));
+    g.addEventListener('click', () => { if (Anim.get('keypad', 'hold') <= 0) activate(v); });
     g.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tap(v); }
     });
@@ -177,7 +252,7 @@
   }
 
   function render(popIndex) {
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < codeLength; i++) {
       digits[i].textContent = entered[i] || '';
       slots[i].classList.toggle('next', !kpLocked && i === entered.length);
     }
@@ -198,12 +273,12 @@
     if (phase !== 'armed' || step !== 2 || kpLocked) return;
     Sfx.key();
     if (v === 'CLEAR') { entered = ''; kpMessage.innerHTML = '&nbsp;'; render(); return; }
-    if (entered.length >= 4) return;
+    if (entered.length >= codeLength) return;
     entered += v;
     kpMessage.innerHTML = '&nbsp;';
     render(entered.length - 1);
     // Lock input while checking so CLEAR can't empty the entry mid-check
-    if (entered.length === 4) { kpLocked = true; later(check, 200); }
+    if (entered.length === codeLength) { kpLocked = true; later(check, Anim.delay('keypad')); }
   }
 
   function check() {
@@ -235,7 +310,8 @@
   // Typing digits anywhere presses the matching key, but only during step 2
   document.addEventListener('keydown', (e) => {
     if (phase !== 'armed' || step !== 2) return;
-    if (e.target.closest && e.target.closest('button')) return;   // keys handle Enter/Space themselves
+    // Keys handle Enter/Space themselves; ignore typing in buttons and panel fields
+    if (e.target.closest && e.target.closest('button, input, select, textarea')) return;
     if (/^[0-9]$/.test(e.key)) tap(e.key);
     else if (e.key === 'Backspace' || e.key === 'Escape') tap('CLEAR');
   });
@@ -253,7 +329,41 @@
 
   const defuseBtn = $('defuse');
 
-  defuseBtn.addEventListener('click', () => {
+  // With a hold duration set (panel: Button > Hold duration), DEFUSE must be
+  // held while a ring fills; otherwise it fires on click as in the study
+  const holdRing = $('holdRing'), holdCircle = holdRing.querySelector('circle');
+  let holdStart = null, holdFrame = null;
+
+  function startHold() {
+    const hold = Anim.get('button', 'hold');
+    if (hold <= 0 || holdStart !== null || phase !== 'armed' || step !== 3 || defuseBtn.classList.contains('on')) return;
+    holdStart = performance.now();
+    defuseBtn.classList.add('holding');
+    holdRing.classList.add('active');
+    const tick = () => {
+      const p = Math.min(1, (performance.now() - holdStart) / hold);
+      holdCircle.style.strokeDashoffset = String(100 - p * 100);
+      if (p >= 1) { stopHold(); defuse(); return; }
+      holdFrame = requestAnimationFrame(tick);
+    };
+    tick();
+  }
+  function stopHold() {
+    if (holdFrame) cancelAnimationFrame(holdFrame);
+    holdStart = holdFrame = null;
+    defuseBtn.classList.remove('holding');
+    holdRing.classList.remove('active');
+    holdCircle.style.strokeDashoffset = '';
+  }
+  defuseBtn.addEventListener('pointerdown', (e) => { if (e.button === 0) startHold(); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(e => defuseBtn.addEventListener(e, stopHold));
+  defuseBtn.addEventListener('keydown', (e) => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) startHold(); });
+  defuseBtn.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') stopHold(); });
+  defuseBtn.addEventListener('blur', stopHold);
+
+  defuseBtn.addEventListener('click', () => { if (Anim.get('button', 'hold') <= 0) defuse(); });
+
+  function defuse() {
     if (phase !== 'armed' || step !== 3 || defuseBtn.classList.contains('on')) return;
     const left = Math.max(0, deadline - performance.now());
     phase = 'defused';                       // timer freezes on the press
@@ -270,14 +380,16 @@
       statusEl.textContent = `BOMB DEFUSED · ${secs} SECOND${secs === 1 ? "" : "S"} LEFT`;
       Sfx.chime();
       showRestart();
-    }, 350);
-  });
+    }, Anim.delay('button'));
+  }
 
   // ---------- Endings ----------
 
   function detonate() {
     phase = 'exploded';
     cancelPending();
+    stopHold();
+    endDrag();
     modules.forEach(m => { m.inert = true; });
     timerEl.textContent = '00:00';
     timerEl.classList.remove('urgent');
@@ -299,7 +411,8 @@
   function newRound() {
     cancelPending();
     phase = 'armed';
-    code = Array.from({ length: 4 }, () => Math.floor(Math.random() * 10)).join('');
+    buildSlots(Anim.get('keypad', 'count'));
+    code = Array.from({ length: codeLength }, () => Math.floor(Math.random() * 10)).join('');
 
     device.classList.remove('defused', 'exploded');
     flash.classList.remove('boom');
@@ -309,7 +422,8 @@
     setSwitch(false);
     swLight.classList.remove('on');
     codeReadout.classList.remove('revealed');
-    codeValue.textContent = '- - - -';
+    codeValue.textContent = Array(codeLength).fill('-').join(' ');
+    codeValue.style.fontSize = codeLength > 4 ? `${1.7 * 4 / codeLength + 0.3}rem` : '';
 
     resetKeypad();
 
@@ -317,17 +431,23 @@
     defuseBtn.setAttribute('aria-pressed', 'false');
     defuseBtn.removeAttribute('aria-label');
 
+    stopHold();
+    endDrag();
+    Anim.refresh();                          // re-apply panel visuals to rebuilt keypad parts
+
     setStep(1);
     deadline = performance.now() + DURATION;
     lastSecond = null;
     updateTimer();
   }
 
-  restartBtn.addEventListener('click', () => {
+  function restart() {
     Sfx.clack(900);                          // the switch study's reset clack
     newRound();
     focusStep(1);
-  });
+  }
+  restartBtn.addEventListener('click', restart);
+  document.addEventListener('anim:restart', restart);   // panel: RESTART ROUND
 
   // Sound can only start after the first user gesture
   ['pointerdown', 'keydown'].forEach(e => document.addEventListener(e, Sfx.unlock, { capture: true }));

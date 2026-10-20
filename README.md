@@ -25,17 +25,38 @@ Sound (ticking, clicks, buzz, chime, explosion) is synthesized in the browser.
 Browsers only allow audio after the first click or key press, so the countdown
 is silent until then.
 
+## Control panel
+
+A floating, collapsible **CONTROLS** panel on the left tunes each component
+(Switch, Keypad, Button) separately:
+
+- **Animation:** speed, duration, delay (the pause before each step's
+  feedback), easing, bounce, travel distance.
+- **Appearance:** fill color, texture, SVG asset (swap in the static art from
+  `assets/`), opacity, stroke width, corner radius, shadow.
+- **Layout & quantity:** spacing, position, rotation, and a count (switch grip
+  lines, keypad code length, button rings).
+- **Interaction response:** drag sensitivity, snap distance and trigger
+  threshold for dragging the switch lever; hold duration for keys and DEFUSE.
+
+**Restore defaults** returns every component to the saved defaults (the
+`DEFAULTS` object in `js/controls.js`, which reproduces the studies).
+**Copy settings** copies all current values plus an instruction to make them
+the new saved defaults. **Restart round** starts a new round at any time.
+Your adjustments are remembered in this browser until you restore defaults.
+
 ## Files
 
 | Path | What it is |
 | --- | --- |
 | `index.html` | The prototype page (markup for the panel and its three modules). |
 | `css/style.css` | All styles: the device, lock/active/done states, each control, endings. |
-| `js/main.js` | Sequence logic: countdown, step unlocking, switch, keypad, button, endings, restart. |
+| `js/main.js` | Sequence logic: countdown, step unlocking, switch (click or drag), keypad, button (click or hold), endings, restart. |
+| `js/controls.js` | The control panel, its saved defaults, and how each setting is applied. |
 | `js/audio.js` | Synthesized sound effects (Web Audio API). |
 | `.nojekyll` | Tells GitHub Pages to serve the files as-is. |
 | `studies/` | The original three studies, unchanged. Each has its own `STUDY.md`. |
-| `assets/` | Earlier reference images (switch, keypad, button SVGs and a test image). |
+| `assets/` | Static SVGs of the switch, keypad and button (used by the panel's SVG asset option) and a test image. |
 
 There's no build step and no dependencies: open `index.html` in a browser, or
 publish the repository root with GitHub Pages.
