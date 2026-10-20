@@ -18,4 +18,4 @@ Every time a change is applied to the live site:
    - Update the existing artifact (same URL) rather than creating a new one. Its URL is recorded below.
 3. Give the user both links: the artifact and https://fscaglia.github.io/Sequential-interaction-project/.
 
-Artifact for the live site: _(not yet published)_
+Artifact for the live site: https://claude.ai/artifact/LMizaUoKUGT99m2mru44Te
